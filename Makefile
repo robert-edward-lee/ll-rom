@@ -1,12 +1,16 @@
 BINDIR=bin
 CC=gcc
-CCLAGC=
+CFLAGS=-Wall -Iinc
 INCDIR=inc
-LDFLAGS=
+LFLAGS=
 SRCDIR=src
 
+override $(CFLAGS):=$(CFLAGS) $(addprefix -I, $(INCDIR))
+
+# VPATH=$(SRCDIR):$(BINDIR)
+
 all: $(BINDIR)
-	$(CC) $(CCLAGC) -Wall main.c -o $(BINDIR)/main $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SRCDIR)/main.c -o $(BINDIR)/main $(LFLAGS)
 
 $(BINDIR):
 	mkdir $(BINDIR)
