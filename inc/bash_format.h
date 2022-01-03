@@ -2,6 +2,10 @@
     Интерфейсная библиотека для форматирования вывода bash
 */
 
+#if !defined(BASH_FORMAT)
+#define BASH_FORMAT
+
+
 /* отмена всех опций */
 #define BASH_DEFAULT                        "\033[0m"               /* отмена всех опций */
 /* форматирование */
@@ -43,3 +47,5 @@
 #define BASH_BGGREEN                        "\033[42m"              /*  */
 #define BASH_BGMAGENTA                      "\033[45m"              /*  */
 #define BASH_BGRED                          "\033[41m"              /*  */
+
+#endif // BASH_FORMAT

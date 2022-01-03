@@ -3,6 +3,10 @@
 
 #include "bash_format.h"
 
+#if !defined(SEVICE_PRINT)
+#define SEVICE_PRINT
+
+
 #define DEBUG
 #define QUOTE(expression) #expression
 #define QUOTE_X(expression) QUOTE(expression)
@@ -19,7 +23,7 @@
         }
 
     #define DbgPrint(str, ...) \
-        fprintf(stderr, "%s: " str "\n" BASH_DEFAULT, __FILE__ "(" QUOTE_X(__LINE__) ")", ##__VA_ARGS__)
+        fprintf(stderr, BASH_DBOLD "%s: " str "\n" BASH_DEFAULT, __FILE__ "(" QUOTE_X(__LINE__) ")", ##__VA_ARGS__)
 #else
     #define PRINTD(...)
     #define DbgPrint(str, ...)
@@ -27,9 +31,11 @@
 
 
 #define PrintErr(str, ...) \
-    fprintf(stderr, BASH_LRED BASH_BLINK "ERROR!" BASH_DEFAULT BASH_LRED "(%s): " BASH_DEFAULT \
+    fprintf(stderr, BASH_LRED BASH_BLINK "ERROR! " BASH_DEFAULT BASH_LRED "(%s): " BASH_DEFAULT \
             BASH_BOLD BASH_UNDERLINE str "\n" BASH_DEFAULT, strerror(errno), ##__VA_ARGS__)
 
 #define PrintWarn(str, ...) \
-    fprintf(stderr, BASH_LMAGENTA BASH_BLINK "WARNING!: " BASH_DEFAULT \
+    fprintf(stderr, BASH_LMAGENTA BASH_BLINK "WARNING! " BASH_DEFAULT \
             BASH_BOLD BASH_UNDERLINE str "\n" BASH_DEFAULT, ##__VA_ARGS__)
+
+#endif // SEVICE_PRINT
