@@ -1,13 +1,16 @@
 #include <ctype.h>
 #include <dirent.h>
+#include <grp.h>
 #include <linux/limits.h>
+#include <pwd.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
-#include <signal.h>
 
 #include "bash_format.h"
 #include "service_printing.h"
@@ -16,7 +19,8 @@
 
 typedef enum
 {
-    NOT_THE_SAME_DIR = 1 << 1
+    NOT_THE_SAME_DIR = 1 << 1,
+    DESCRIPTION = ~NOT_THE_SAME_DIR
 }
 opts_et;
 
@@ -30,13 +34,13 @@ file_info_st;
 
 char DirPath[PATH_MAX] = ".";
 
-const char DESCRIPTION[] = "";
+const char ABOUT[] = "ll v." VERSION "\n";
 
 opts_et getOpts(int argc, const char* argv[], opts_et* opts);
 
 void tolowerWord(char* word);
 
-int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2);
+int sortDirent(const struct dirent** dirent1, const struct dirent** dirent2);
 
 void printStat(const file_info_st* file_info);
 
@@ -103,6 +107,12 @@ opts_et getOpts(int argc, const char* argv[], opts_et* opts)
     *opts = 0;
     if (argc == 2)
     {
+        if (strncmp(argv[1], "-h", sizeof("-h")) == 0)
+        {
+            fprintf(stdout, ABOUT);
+            ret = DESCRIPTION;
+            exit(EXIT_SUCCESS);
+        }
         if ((stat(argv[1], &dir_stat) == 0) && (dir_stat.st_mode & S_IFDIR))
         {
             *opts |= NOT_THE_SAME_DIR;
@@ -116,7 +126,7 @@ opts_et getOpts(int argc, const char* argv[], opts_et* opts)
     return ret;
 }
 
-int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2)
+int sortDirent(const struct dirent** dirent1, const struct dirent** dirent2)
 {
     char file_one[NAME_MAX];
     char file_two[NAME_MAX];
@@ -126,8 +136,8 @@ int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2)
 
     tolowerWord(file_one);
     tolowerWord(file_two);
-
-    return strcmp(file_one, file_two);
+    /* костыль: переписать нормальное сравнение выкинув из сравнения все не буквы */
+    return strcmp(isalpha(file_one[0]) ? file_one : (file_one + 1), isalpha(file_two[0]) ? file_two : (file_two + 1));
 }
 
 void tolowerWord(char* word)
@@ -144,18 +154,22 @@ void tolowerWord(char* word)
 void printStat(const file_info_st* file_info)
 {
     char text[PATH_MAX];
+    char file_type;
+
     char* text_offset = text;
-    char tmp;
+    struct tm* local_time;
+    struct passwd* pw;
+    struct group* gr;
 
     /* печать прав доступа */
-    if ((file_info->f_stat.st_mode & S_IFMT) == S_IFBLK)        tmp = 'b';
-    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFCHR)   tmp = 'c';
-    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFDIR)   tmp = 'd';
-    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFLNK)   tmp = 'l';
-    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFIFO)   tmp = 'p';
-    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFSOCK)  tmp = 's';
-    else                                                        tmp = '-';
-    text_offset += sprintf(text_offset, "%c", tmp);
+    if ((file_info->f_stat.st_mode & S_IFMT) == S_IFBLK)        file_type = 'b';
+    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFCHR)   file_type = 'c';
+    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFDIR)   file_type = 'd';
+    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFLNK)   file_type = 'l';
+    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFIFO)   file_type = 'p';
+    else if ((file_info->f_stat.st_mode & S_IFMT) == S_IFSOCK)  file_type = 's';
+    else                                                        file_type = '-';
+    text_offset += sprintf(text_offset, "%c", file_type);
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRUSR) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWUSR) ? "w" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IXUSR) ? "x" : "-");
@@ -166,42 +180,59 @@ void printStat(const file_info_st* file_info)
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWOTH) ? "w" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IXOTH) ? "x" : "-");
     text_offset += sprintf(text_offset, " ");
+    /* какое-то число */
+    text_offset += sprintf(text_offset, "%2ld ", file_info->f_stat.st_nlink);
+    /* печать пользователя и группы */
+    pw = getpwuid(file_info->f_stat.st_uid);
+    gr = getgrgid(file_info->f_stat.st_gid);
+    text_offset += sprintf(text_offset, "%s %s", pw->pw_name, gr->gr_name);
+    /* печать размера файла */
+    text_offset += sprintf(text_offset, "%5ld", file_info->f_stat.st_size);
+    text_offset += sprintf(text_offset, " ");
+    /* печать времени последнего изменения */
+    local_time = localtime(&(file_info->f_stat.st_mtim.tv_sec));
+    text_offset += strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", local_time);
     /* печать имени файла */
-    text_offset += sprintf(text_offset, "%s\n",file_info->name);
+    text_offset += (file_type == 'd')
+        ? sprintf(text_offset, BASH_BLUE "%s" BASH_DEFAULT "/\n",file_info->name)
+        : sprintf(text_offset, "%s\n",file_info->name);
 
     fprintf(stdout, text);
 }
 
 void signalHandler(int signal, siginfo_t* signalInfo, void* userContext)
 {
-    switch (signalInfo->si_code)
+    if (signal == SIGSEGV)
     {
-        case SEGV_MAPERR:
-            PrintWarn("Address not mapped to object(%s)", QUOTE(SEGV_MAPERR));
-            break;
-        case SEGV_ACCERR:
-            PrintWarn("Invalid permissions for mapped object(%s)", QUOTE(SEGV_ACCERR));
-            break;
-        case SEGV_BNDERR:
-            PrintWarn("Bounds checking failure(%s)", QUOTE(SEGV_BNDERR));
-            break;
-        case SEGV_PKUERR:
-            PrintWarn("Protection key checking failure(%s)", QUOTE(SEGV_PKUERR));
-            break;
-        case SEGV_ACCADI:
-            PrintWarn("ADI not enabled for mapped object(%s)", QUOTE(SEGV_ACCADI));
-            break;
-        case SEGV_ADIDERR:
-            PrintWarn("Disrupting MCD error(%s)", QUOTE(SEGV_ADIDERR));
-            break;
-        case SEGV_ADIPERR:
-            PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
-            break;
-        default:
-            PrintWarn("Unknown error");
-            break;
+        switch (signalInfo->si_code)
+        {
+            case SEGV_MAPERR:
+                PrintWarn("Address not mapped to object(%s)", QUOTE(SEGV_MAPERR));
+                break;
+            case SEGV_ACCERR:
+                PrintWarn("Invalid permissions for mapped object(%s)", QUOTE(SEGV_ACCERR));
+                break;
+            case SEGV_BNDERR:
+                PrintWarn("Bounds checking failure(%s)", QUOTE(SEGV_BNDERR));
+                break;
+            case SEGV_PKUERR:
+                PrintWarn("Protection key checking failure(%s)", QUOTE(SEGV_PKUERR));
+                break;
+            case SEGV_ACCADI:
+                PrintWarn("ADI not enabled for mapped object(%s)", QUOTE(SEGV_ACCADI));
+                break;
+            case SEGV_ADIDERR:
+                PrintWarn("Disrupting MCD error(%s)", QUOTE(SEGV_ADIDERR));
+                break;
+            case SEGV_ADIPERR:
+                PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
+                break;
+            default:
+                PrintWarn("Unknown error");
+                break;
+        }
+        PrintWarn("Address of faulting memory reference: %p", signalInfo->si_addr);
     }
-    PrintWarn("Address of faulting memory reference: %p", signalInfo->si_addr);
     exit(EXIT_FAILURE);
 }
 

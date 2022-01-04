@@ -6,7 +6,7 @@ LFLAGS=
 OUTDIR=_out
 PROJECT=ll
 SRCDIR=src
-VERSION=0.0.1
+VERSION=0.0.5
 
 override $(CFLAGS):=$(CFLAGS) $(addprefix -I, $(INCDIR))
 
@@ -33,7 +33,7 @@ $(OUTDIR):
 
 version:
 	@echo 'Creating version...'
-	@echo '#define VERSION $(VERSION)' > inc/version.h
+	@echo '#define VERSION "$(VERSION)"' > inc/version.h
 
 clean:
 	@rm -rf $(OUTDIR)/*
