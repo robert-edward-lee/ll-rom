@@ -48,4 +48,4 @@
 #define BASH_BGMAGENTA                      "\033[45m"              /*  */
 #define BASH_BGRED                          "\033[41m"              /*  */
 
-#endif // BASH_FORMAT
+#endif /* BASH_FORMAT */

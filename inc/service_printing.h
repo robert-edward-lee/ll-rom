@@ -38,4 +38,4 @@
     fprintf(stderr, BASH_LMAGENTA BASH_BLINK "WARNING! " BASH_DEFAULT \
             BASH_BOLD BASH_UNDERLINE str "\n" BASH_DEFAULT, ##__VA_ARGS__)
 
-#endif // SEVICE_PRINT
+#endif /* SEVICE_PRINT */

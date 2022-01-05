@@ -6,7 +6,7 @@ LFLAGS=
 OUTDIR=_out
 PROJECT=ll
 SRCDIR=src
-VERSION=0.0.5
+VERSION=0.0.6
 
 override $(CFLAGS):=$(CFLAGS) $(addprefix -I, $(INCDIR))
 
