@@ -54,7 +54,7 @@ void tolowerWord(char *word);
 int sortDirent(const struct dirent** dirent1, const struct dirent** dirent2);
 struct stat handleLink(char *path);
 void printStat(const file_info_st *file_info);
-int putGayText(char *out_text, const char *in_text, char file_type, int exec_type);
+int putGayText(char *out_text, const char *in_text, char file_type, __mode_t file_mode);
 char getFileType(const char *path);
 void signalHandler(int signal, siginfo_t *signalInfo, void *userContext);
 void signalCatcher(void);
@@ -239,16 +239,40 @@ void printStat(const file_info_st *file_info)
     /* печать типа файла */
     file_type = getFileType(file_info->name);
     text_offset += sprintf(text_offset, "%c", file_type);
-    /* печать прав доступа */
+    /* печать прав доступа пользователя */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRUSR) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWUSR) ? "w" : "-");
-    text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IXUSR) ? "x" : "-");
+    if(file_info->f_stat.st_mode & S_IXUSR)
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISUID) ? "s" : "x");
+    }
+    else
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISUID) ? "S" : "-");
+    }
+    /* печать прав доступа группы */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRGRP) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWGRP) ? "w" : "-");
-    text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IXGRP) ? "x" : "-");
+    if(file_info->f_stat.st_mode & S_IXGRP)
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISGID) ? "s" : "x");
+    }
+    else
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISGID) ? "S" : "-");
+    }
+    /* печать прав доступа для остальных */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IROTH) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWOTH) ? "w" : "-");
-    text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IXOTH) ? "x" : "-");
+    if(file_info->f_stat.st_mode & S_IXOTH)
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISVTX) ? "t" : "x");
+    }
+    else
+    {
+        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISVTX) ? "T" : "-");
+    }
+
     text_offset += sprintf(text_offset, " ");
     /* печать числа символьных ссылок */
     text_offset += sprintf(text_offset,
@@ -259,8 +283,8 @@ void printStat(const file_info_st *file_info)
 #endif
         linkAlign, file_info->f_stat.st_nlink);
     /* печать пользователя и группы */
-    text_offset += sprintf(text_offset, "%*s %*s ", userAlign, getpwuid(file_info->f_stat.st_uid)->pw_name,
-                                                    groupAlign, getgrgid(file_info->f_stat.st_gid)->gr_name);
+    text_offset += sprintf(text_offset, "%-*s %-*s ", userAlign,  getpwuid(file_info->f_stat.st_uid)->pw_name,
+                                                      groupAlign, getgrgid(file_info->f_stat.st_gid)->gr_name);
     /* печать размера файла */
     text_offset += sprintf(text_offset, "%*ld ", sizeAlign, file_info->f_stat.st_size);
     /* печать времени последнего изменения */
@@ -269,8 +293,7 @@ void printStat(const file_info_st *file_info)
                 ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", &local_time)
                 : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", &local_time);
     /* печать имени файла */
-    text_offset += putGayText(text_offset, file_info->name, file_type,
-                                (file_info->f_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
+    text_offset += putGayText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if (file_type == 'l')
     {
         file_type = getFileType(file_info->link);
@@ -281,7 +304,7 @@ void printStat(const file_info_st *file_info)
     fprintf(stdout, text);
 }
 
-int putGayText(char *out_text, const char *in_text, char file_type, int exec_type)
+int putGayText(char *out_text, const char *in_text, char file_type, __mode_t file_mode)
 {
     int offset = 0;
 
@@ -292,7 +315,18 @@ int putGayText(char *out_text, const char *in_text, char file_type, int exec_typ
             offset = sprintf(out_text, BASH_LYELLOW BASH_BGBLACK "%s" BASH_DEFAULT "\n", in_text);
             break;
         case 'd':
-            offset = sprintf(out_text, BASH_LBLUE "%s" BASH_DEFAULT "/\n", in_text);
+            if((file_mode & S_ISVTX) && (file_mode & S_IWOTH))
+            {
+                offset = sprintf(out_text, BASH_BLACK BASH_BGGREEN "%s" BASH_DEFAULT "/\n", in_text);
+            }
+            else if(file_mode & S_ISVTX)
+            {
+                offset = sprintf(out_text, BASH_WHITE BASH_BGBLUE "%s" BASH_DEFAULT "/\n", in_text);
+            }
+            else
+            {
+                offset = sprintf(out_text, BASH_LBLUE "%s" BASH_DEFAULT "/\n", in_text);
+            }
             break;
         case 'l':
             offset = sprintf(out_text, BASH_LCYAN "%s" BASH_DEFAULT " -> ", in_text);
@@ -304,9 +338,23 @@ int putGayText(char *out_text, const char *in_text, char file_type, int exec_typ
             offset = sprintf(out_text, BASH_MAGENTA "%s" BASH_DEFAULT "=\n", in_text);
             break;
         case '-':
-            offset = exec_type
-                ? sprintf(out_text, BASH_LGREEN "%s" BASH_DEFAULT "*\n", in_text)
-                : sprintf(out_text, "%s\n", in_text);
+            if(file_mode & S_ISUID)
+            {
+                offset = sprintf(out_text, BASH_WHITE BASH_BGRED "%s" BASH_DEFAULT, in_text);
+            }
+            else if(file_mode & S_ISGID)
+            {
+                offset = sprintf(out_text, BASH_BLACK BASH_BGGRAY "%s" BASH_DEFAULT, in_text);
+            }
+            else if(file_mode & (S_IXUSR | S_IXGRP | S_IXOTH))
+            {
+                offset = sprintf(out_text, BASH_LGREEN "%s" BASH_DEFAULT, in_text);
+            }
+            else
+            {
+                offset = sprintf(out_text, "%s", in_text);
+            }
+            offset += sprintf(out_text + offset, "%s\n", (file_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) ? "*" : "");
             break;
         default:
             break;

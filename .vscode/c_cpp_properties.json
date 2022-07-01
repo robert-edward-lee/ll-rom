@@ -3,7 +3,7 @@
         {
             "name": "Linux x86",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/inc"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
@@ -15,7 +15,6 @@
             "name": "Linux arm",
             "includePath": [
                 "${workspaceFolder}/inc",
-                // "${workspaceFolder}/libcrc",
                 "/opt/ARM-toolchain/lib/gcc/arm-none-linux-gnueabi/4.3.3/include",
                 "/opt/EZSDK_5_05/linux-devkit/arm-none-linux-gnueabi/usr/include",
                 "/opt/EZSDK_5_05/linux-devkit/arm-none-linux-gnueabi/usr/src/linux-2.6.37-psp04.04.00.01-headers/include"
