@@ -165,7 +165,7 @@ int sortDirent(const struct dirent** dirent1, const struct dirent** dirent2)
     tolowerWord(file_one);
     tolowerWord(file_two);
 
-    for(i = 0; i != NAME_MAX; i++)
+    for(i = 0; i != NAME_MAX && file_one[i] != '\0'; i++)
     {
         if(isalpha(file_one[i]))
         {
@@ -174,7 +174,7 @@ int sortDirent(const struct dirent** dirent1, const struct dirent** dirent2)
         }
     }
 
-    for(i = 0; i != NAME_MAX; i++)
+    for(i = 0; i != NAME_MAX && file_two[i] != '\0'; i++)
     {
         if(isalpha(file_two[i]))
         {
