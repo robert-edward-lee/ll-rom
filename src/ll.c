@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -47,6 +48,8 @@ int linkAlign = 0;
 int userAlign = 0;
 int groupAlign = 0;
 int sizeAlign = 0;
+int majorAlign = 0;
+int minorAlign = 0;
 
 
 opts_et getOpts(int argc, const char *argv[], opts_et *opts);
@@ -285,8 +288,13 @@ void printStat(const file_info_st *file_info)
     /* печать пользователя и группы */
     text_offset += sprintf(text_offset, "%-*s %-*s ", userAlign,  getpwuid(file_info->f_stat.st_uid)->pw_name,
                                                       groupAlign, getgrgid(file_info->f_stat.st_gid)->gr_name);
-    /* печать размера файла */
-    text_offset += sprintf(text_offset, "%*ld ", sizeAlign, file_info->f_stat.st_size);
+    /* печать размера файла или его номеров, если это устройство */
+    text_offset += (file_type == 'l' || file_type == 'd' || file_type == '-')
+                ? sprintf(text_offset, "%*ld ",
+                            sizeAlign > majorAlign + minorAlign + 2 ? sizeAlign : majorAlign + minorAlign + 2,
+                            file_info->f_stat.st_size)
+                : sprintf(text_offset, "%*u, %*u ", majorAlign, major(file_info->f_stat.st_rdev), minorAlign,
+                            minor(file_info->f_stat.st_rdev));
     /* печать времени последнего изменения */
     local_time = *localtime(&(file_info->f_stat.st_mtim.tv_sec));
     text_offset += (local_time.tm_year == global_time.tm_year)
@@ -453,4 +461,12 @@ void setAlignment(const file_info_st *file_info)
     sprintf(buff, "%ld", file_info->f_stat.st_size);
     tmp = strlen(buff);
     sizeAlign = sizeAlign < tmp ? tmp : sizeAlign;
+
+    sprintf(buff, "%d", major(file_info->f_stat.st_rdev));
+    tmp = strlen(buff);
+    majorAlign = majorAlign < tmp ? tmp : majorAlign;
+
+    sprintf(buff, "%d", minor(file_info->f_stat.st_rdev));
+    tmp = strlen(buff);
+    minorAlign = minorAlign < tmp ? tmp : minorAlign;
 }
