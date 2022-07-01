@@ -80,7 +80,11 @@ int main(int argc, const char* argv[])
     }
     getcwd(DirPath, PATH_MAX);
 
-    names = scandir(DirPath, &name_list, NULL, sortDirent);
+    names = scandir(DirPath, &name_list, NULL,
+#ifdef ARM
+        (int (*)(const void*, const void*))
+#endif
+        sortDirent);
     if (names == -1)
     {
         PrintErr("Cannot scan the directory: %s", DirPath);
@@ -290,6 +294,7 @@ void signalHandler(int signal, siginfo_t* signalInfo, void* userContext)
             case SEGV_ACCERR:
                 PrintWarn("Invalid permissions for mapped object(%s)", QUOTE(SEGV_ACCERR));
                 break;
+#ifndef ARM
             case SEGV_BNDERR:
                 PrintWarn("Bounds checking failure(%s)", QUOTE(SEGV_BNDERR));
                 break;
@@ -305,6 +310,7 @@ void signalHandler(int signal, siginfo_t* signalInfo, void* userContext)
             case SEGV_ADIPERR:
                 PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
                 break;
+#endif
             default:
                 PrintWarn("Unknown error");
                 break;

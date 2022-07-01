@@ -1,9 +1,2 @@
-# Workspace settings
-*.code-workspace
-.vscode/
-
-# Version header
-version.h
-
-# Output
 _out/
+version.h

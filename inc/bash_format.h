@@ -2,13 +2,11 @@
     Интерфейсная библиотека для форматирования вывода bash
 */
 
-#if !defined(BASH_FORMAT)
-#define BASH_FORMAT
+#ifndef __BASH_FORMAT_H
+#define __BASH_FORMAT_H
 
-
-/* отмена всех опций */
-#define BASH_DEFAULT                        "\033[0m"               /* отмена всех опций */
 /* форматирование */
+#define BASH_DEFAULT                        "\033[0m"               /* отмена всех опций */
 #define BASH_BOLD                           "\033[1m"               /* жирный шрифт */
 #define BASH_DBOLD                          "\033[2m"               /* полу-яркий цвет */
 #define BASH_NBOLD                          "\033[22m"              /* установить нормальную интенсивность  */
@@ -48,4 +46,4 @@
 #define BASH_BGMAGENTA                      "\033[45m"              /*  */
 #define BASH_BGRED                          "\033[41m"              /*  */
 
-#endif /* BASH_FORMAT */
+#endif /* __BASH_FORMAT_H */

@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "CMakeLists.*": "cmake",
+        "bash_format.h": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "functional": "c",
+        "utility": "c"
+    }
+}
