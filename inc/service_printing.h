@@ -11,8 +11,7 @@
 #define QUOTE_X(expression) QUOTE(expression)
 
 #ifdef DEBUG
-#define PRINTD(...) \
-    { \
+#define PRINTD(...) { \
         char buffer[4096]; \
         char* tmp = buffer; \
         tmp += sprintf(tmp, "%s(%d): ", __FILE__, __LINE__); \
