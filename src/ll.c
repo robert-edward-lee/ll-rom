@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <sys/xattr.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -235,7 +236,7 @@ void printStat(const file_info_st *file_info) {
         text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISVTX) ? "T" : "-");
     }
 
-    text_offset += sprintf(text_offset, " ");
+    text_offset += sprintf(text_offset, "%s", listxattr(file_info->name, NULL, 0) ? "+" : " ");
     /* печать числа символьных ссылок */
     text_offset += sprintf(text_offset,
 #ifdef ARM
