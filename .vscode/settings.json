@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "CMakeLists.*": "cmake",
+        "bash_format.h": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "functional": "c",
+        "utility": "c",
+        "stat.h": "c",
+        "types.h": "c",
+        "posix_types.h": "c",
+        "posix_types_64.h": "c",
+        "sysmacros.h": "c",
+        "ctype.h": "c"
+    }
+}
