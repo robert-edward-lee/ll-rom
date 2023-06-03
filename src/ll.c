@@ -18,7 +18,6 @@
 #ifndef _WIN32
 #include <grp.h>
 #include <linux/limits.h>
-#include <linux/version.h>
 #include <pwd.h>
 #include <sys/sysmacros.h>
 #include <sys/xattr.h>

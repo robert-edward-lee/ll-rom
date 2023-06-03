@@ -1,8 +1,8 @@
 #include "readlink.h"
 
+#ifdef _WIN32
 #include <windows.h>
 
-#ifdef _WIN32
 ssize_t readlink(const char *restrict path, char *restrict link, size_t size) {
     HANDLE file;
     DWORD linkSize;

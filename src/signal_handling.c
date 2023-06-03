@@ -1,10 +1,13 @@
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "service_printing.h"
 #include "signal_handling.h"
 
 #ifndef _WIN32
+#include <linux/version.h>
+
 static void signal_handler(int signal, siginfo_t *signalInfo, void *userContext) {
     (void)userContext;
 
@@ -57,7 +60,9 @@ static void signal_handler(int signal) {
 #endif
 
 void register_signal_handler(void) {
-#ifndef _WIN32
+#ifdef _WIN32
+    signal(SIGSEGV, signal_handler);
+#else
     struct sigaction signal_action;
 
     memset(&signal_action, 0, sizeof(signal_action));
@@ -66,7 +71,5 @@ void register_signal_handler(void) {
     signal_action.sa_flags = SA_SIGINFO;
 
     sigaction(SIGSEGV, &signal_action, NULL);
-#else
-    signal(SIGSEGV, signal_handler);
 #endif
 }
