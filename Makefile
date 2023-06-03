@@ -6,8 +6,8 @@ LFLAGS =
 DEBUG = 0
 DEFINES = _GNU_SOURCE
 BUILDDIR = build
-SRCDIRS = src $(wildcard src/*/)
-INCDIRS = $(SRCDIRS) $(BUILDDIR)
+SRCDIRS = src $(sort $(dir $(wildcard src/*/*)))
+INCDIRS = $(BUILDDIR) $(SRCDIRS)
 
 WARN_FLAGS = -Wall -Wextra -pedantic
 ifeq ($(CC),clang)
