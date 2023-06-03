@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <grp.h>
 #include <linux/limits.h>
+#include <linux/version.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdint.h>
@@ -20,10 +21,11 @@
 #include "version.h"
 
 #define MAX_REC_COUNT 40
+#define max(a, b) ((a) < (b) ? (b) : (a))
 
 typedef enum {
     NOT_THE_SAME_DIR = 1 << 1,
-    DESCRIPTION = ~NOT_THE_SAME_DIR,
+    DESCRIPTION = ~0,
 } opts_et;
 
 typedef struct {
@@ -39,7 +41,10 @@ typedef struct {
 
 char DirPath[PATH_MAX] = ".";
 
-const char ABOUT[] = "ll v." VERSION "\n";
+const char ABOUT[] = "ll v" VERSION "\n"
+                     "Usage:\n"
+                     "\tll -h       - call help\n"
+                     "\tll [DIR]    - show files list\n";
 
 int linkAlign = 0;
 int userAlign = 0;
@@ -49,14 +54,13 @@ int majorAlign = 0;
 int minorAlign = 0;
 
 opts_et getOpts(int argc, const char *argv[], opts_et *opts);
-void tolowerWord(char *word);
-int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2);
+int direntComparator(const struct dirent **lhs, const struct dirent **rhs);
 struct stat handleLink(char *path);
 void printStat(const file_info_st *file_info);
 int putColoredText(char *out_text, const char *in_text, char file_type, mode_t file_mode);
 char getFileType(const char *path);
 void signalHandler(int signal, siginfo_t *signalInfo, void *userContext);
-void signalCatcher(void);
+void registerSignalHandler(void);
 void setAlignment(const file_info_st *file_info);
 
 int main(int argc, const char *argv[]) {
@@ -65,40 +69,41 @@ int main(int argc, const char *argv[]) {
     int names, i;
     file_info_st *data_files;
 
-    signalCatcher();
+    registerSignalHandler();
 
     if(getOpts(argc, argv, &opts) == -1) {
         PrintWarn("Cannot get opts");
-        goto ret_err;
+        return -1;
+    }
+    if(opts == DESCRIPTION) {
+        fputs(ABOUT, stdout);
+        return 0;
     }
     if(opts & NOT_THE_SAME_DIR) {
         chdir(argv[1]);
     }
     getcwd(DirPath, PATH_MAX);
 
-    names = scandir(DirPath, &name_list, NULL, sortDirent);
+    names = scandir(DirPath, &name_list, NULL, direntComparator);
     if(names == -1) {
         PrintErr("Cannot scan the directory: %s", DirPath);
-        goto ret_err;
-    } else {
-        data_files = (file_info_st *)calloc(names, sizeof(file_info_st));
-        for(i = 0; i < names; i++) {
-            /* Заполняем инфу о файле */
-            strncpy(data_files[i].name, name_list[i]->d_name, PATH_MAX);
-            lstat(name_list[i]->d_name, &(data_files[i].f_stat));
-            /* Если это символьная ссылка, то получаем данные куда ссылка ведёт */
-            if(getFileType(data_files[i].name) == 'l') {
-                strncpy(data_files[i].link, data_files[i].name, PATH_MAX);
-                data_files[i].l_stat = handleLink(data_files[i].link);
-            }
-            free(name_list[i]);
-        }
-        free(name_list);
+        return -1;
     }
 
+    data_files = calloc(names, sizeof(*data_files));
     for(i = 0; i < names; i++) {
+        /* Заполняем инфу о файле */
+        strncpy(data_files[i].name, name_list[i]->d_name, PATH_MAX);
+        lstat(name_list[i]->d_name, &data_files[i].f_stat);
+        /* Если это символьная ссылка, то получаем данные куда ссылка ведёт */
+        if(getFileType(data_files[i].name) == 'l') {
+            strncpy(data_files[i].link, data_files[i].name, PATH_MAX);
+            data_files[i].l_stat = handleLink(data_files[i].link);
+        }
         setAlignment(&data_files[i]);
+        free(name_list[i]);
     }
+    free(name_list);
 
     for(i = 0; i < names; i++) {
         printStat(&data_files[i]);
@@ -106,8 +111,6 @@ int main(int argc, const char *argv[]) {
 
     free(data_files);
     return 0;
-ret_err:
-    return -1;
 }
 
 opts_et getOpts(int argc, const char *argv[], opts_et *opts) {
@@ -116,8 +119,8 @@ opts_et getOpts(int argc, const char *argv[], opts_et *opts) {
 
     *opts = 0;
     if(argc == 2) {
-        if(strncmp(argv[1], "-h", sizeof("-h")) == 0) {
-            ret = DESCRIPTION;
+        if(!strncmp(argv[1], "-h", sizeof("-h"))) {
+            *opts |= DESCRIPTION;
         } else if((stat(argv[1], &dir_stat) == 0) && (dir_stat.st_mode & S_IFDIR)) {
             *opts |= NOT_THE_SAME_DIR;
         } else {
@@ -128,34 +131,23 @@ opts_et getOpts(int argc, const char *argv[], opts_et *opts) {
     return ret;
 }
 
-int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2) {
-    char file_one[NAME_MAX];
-    char file_two[NAME_MAX];
-    char *file_one_p = file_one;
-    char *file_two_p = file_two;
-    size_t i;
-
-    memcpy(file_one, (**dirent1).d_name, NAME_MAX);
-    memcpy(file_two, (**dirent2).d_name, NAME_MAX);
-
-    tolowerWord(file_one);
-    tolowerWord(file_two);
-
-    for(i = 0; i != NAME_MAX && file_one[i] != '\0'; i++) {
-        if(isalpha(file_one[i])) {
-            file_one_p = &file_one[i];
-            break;
-        }
+int direntComparator(const struct dirent **lhs, const struct dirent **rhs) {
+    int n = NAME_MAX;
+    uint8_t *l = (void *)(**lhs).d_name;
+    uint8_t *r = (void *)(**rhs).d_name;
+    /* избавляемся от пунктуации в начале слова, а если всё слово состоит из пунктуации, то возвращаем указатель на
+    начало */
+    for(; *l && ispunct(*l); l++) {}
+    if(!*l) {
+        l = (void *)(**lhs).d_name;
+    }
+    for(; *r && ispunct(*r); r++) {}
+    if(!*r) {
+        r = (void *)(**rhs).d_name;
     }
 
-    for(i = 0; i != NAME_MAX && file_two[i] != '\0'; i++) {
-        if(isalpha(file_two[i])) {
-            file_two_p = &file_two[i];
-            break;
-        }
-    }
-
-    return strncmp(file_one_p, file_two_p, NAME_MAX);
+    for(; *l && *r && n && tolower(*l) == tolower(*r); l++, r++, n--) {}
+    return tolower(*l) - tolower(*r);
 }
 
 struct stat handleLink(char *path) {
@@ -175,30 +167,18 @@ struct stat handleLink(char *path) {
         memset(link, 0, PATH_MAX);
         rec_count++;
         handleLink(path);
-    } else {
-        lstat(path, &ret_stat);
-        rec_count = 0;
     }
+
+    lstat(path, &ret_stat);
+    rec_count = 0;
     return ret_stat;
-}
-
-void tolowerWord(char *word) {
-    int i = 0;
-
-    while((word[i] != 0) || i < NAME_MAX + 1) {
-        word[i] = tolower(word[i]);
-        i++;
-    }
 }
 
 void printStat(const file_info_st *file_info) {
     char file_type;
     char text[PATH_MAX];
     char *text_offset = text;
-    struct tm local_time, global_time;
-
-    time_t tmp_t = time(NULL);
-    global_time = *localtime(&tmp_t);
+    struct tm *file_timestamp;
 
     /* печать типа файла */
     file_type = getFileType(file_info->name);
@@ -251,20 +231,19 @@ void printStat(const file_info_st *file_info) {
                                minorAlign,
                                minor(file_info->f_stat.st_rdev));
     /* печать времени последнего изменения */
-    local_time = *localtime(&(file_info->f_stat.st_mtim.tv_sec));
+    file_timestamp = localtime(&file_info->f_stat.st_mtim.tv_sec);
     IGNORE_WFORMAT_PUSH()
-    text_offset += (local_time.tm_year == global_time.tm_year)
-                     ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", &local_time)
-                     : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", &local_time);
+    text_offset += (file_timestamp->tm_year == localtime(&(time_t){time(NULL)})->tm_year)
+                     ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", file_timestamp)
+                     : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", file_timestamp);
     IGNORE_WFORMAT_POP()
     /* печать имени файла */
     text_offset += putColoredText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if(file_type == 'l') {
-        file_type = getFileType(file_info->link);
         text_offset += putColoredText(text_offset,
                                       file_info->link,
-                                      file_type,
-                                      (file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
+                                      getFileType(file_info->link),
+                                      file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
     }
 
     fputs(text, stdout);
@@ -352,7 +331,7 @@ char getFileType(const char *path) {
 void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
     (void)userContext;
 
-    if(signal == SIGSEGV) {
+    if(signal & SIGSEGV) {
         switch(signalInfo->si_code) {
             case SEGV_MAPERR:
                 PrintWarn("Address not mapped to object(%s)", QUOTE(SEGV_MAPERR));
@@ -375,8 +354,16 @@ void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
             case SEGV_ADIPERR:
                 PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
                 break;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+            case SEGV_MTEAERR:
+                PrintWarn("Async MTE fault(%s)", QUOTE(SEGV_MTEAERR));
+                break;
+            case SEGV_MTESERR:
+                PrintWarn("Sync MTE tag check fault(%s)", QUOTE(SEGV_MTESERR));
+                break;
+#endif
             default:
-                PrintWarn("Unknown error");
+                PrintWarn("Unknown error code: (%d)", signalInfo->si_code);
                 break;
         }
         PrintWarn("Address of faulting memory reference: %p", signalInfo->si_addr);
@@ -384,11 +371,11 @@ void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
     exit(EXIT_FAILURE);
 }
 
-void signalCatcher(void) {
+void registerSignalHandler(void) {
     struct sigaction signalAction;
 
     memset(&signalAction, 0, sizeof(signalAction));
-    sigaddset(&(signalAction.sa_mask), SIGSEGV);
+    sigaddset(&signalAction.sa_mask, SIGSEGV);
     signalAction.sa_sigaction = signalHandler;
     signalAction.sa_flags = SA_SIGINFO;
 
@@ -401,23 +388,23 @@ void setAlignment(const file_info_st *file_info) {
 
     sprintf(buff, "%ld ", file_info->f_stat.st_nlink);
     tmp = strlen(buff);
-    linkAlign = linkAlign < tmp ? tmp : linkAlign;
+    linkAlign = max(linkAlign, tmp);
 
     tmp = strlen(getpwuid(file_info->f_stat.st_uid)->pw_name);
-    userAlign = userAlign < tmp ? tmp : userAlign;
+    userAlign = max(userAlign, tmp);
 
     tmp = strlen(getgrgid(file_info->f_stat.st_gid)->gr_name);
-    groupAlign = groupAlign < tmp ? tmp : groupAlign;
+    groupAlign = max(groupAlign, tmp);
 
     sprintf(buff, "%ld", file_info->f_stat.st_size);
     tmp = strlen(buff);
-    sizeAlign = sizeAlign < tmp ? tmp : sizeAlign;
+    sizeAlign = max(sizeAlign, tmp);
 
     sprintf(buff, "%d", major(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
-    majorAlign = majorAlign < tmp ? tmp : majorAlign;
+    majorAlign = max(majorAlign, tmp);
 
     sprintf(buff, "%d", minor(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
-    minorAlign = minorAlign < tmp ? tmp : minorAlign;
+    minorAlign = max(minorAlign, tmp);
 }

@@ -7,7 +7,7 @@ BUILDDIR = build
 INCDIRS = src/utils $(BUILDDIR)
 PROJECT = ll
 SRCDIR = src
-VERSION = 1.1.0
+VERSION = 1.1.1
 
 WARN_FLAGS = -Wall -Wextra -pedantic
 ifeq ($(CC),clang)
@@ -50,6 +50,6 @@ clean:
 	@rm -rf $(BUILDDIR)/*
 
 format:
-	clang-format \
+	@clang-format \
 		-style=file:$(CURDIR)/.clang-format \
 		-i $(wildcard $(CURDIR)/src/*.c) -i $(wildcard $(CURDIR)/src/*/*.h)
