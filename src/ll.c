@@ -39,39 +39,41 @@ typedef struct {
     struct stat l_stat;
 } file_info_st;
 
-char DirPath[PATH_MAX] = ".";
+char dir_path[PATH_MAX] = ".";
 
 const char ABOUT[] = "ll v" VERSION "\n"
                      "Usage:\n"
                      "\tll -h       - call help\n"
                      "\tll [DIR]    - show files list\n";
 
-int linkAlign = 0;
-int userAlign = 0;
-int groupAlign = 0;
-int sizeAlign = 0;
-int majorAlign = 0;
-int minorAlign = 0;
+int link_align = 0;
+int user_align = 0;
+int group_align = 0;
+int size_align = 0;
+int major_align = 0;
+int minor_align = 0;
 
-opts_et getOpts(int argc, const char *argv[], opts_et *opts);
-int direntComparator(const struct dirent **lhs, const struct dirent **rhs);
-struct stat handleLink(char *path);
-void printStat(const file_info_st *file_info);
-int putColoredText(char *out_text, const char *in_text, char file_type, mode_t file_mode);
-char getFileType(const char *path);
-void signalHandler(int signal, siginfo_t *signalInfo, void *userContext);
-void registerSignalHandler(void);
-void setAlignment(const file_info_st *file_info);
+int current_year;
+
+opts_et get_opts(int argc, const char *argv[], opts_et *opts);
+int dirent_comparator(const struct dirent **lhs, const struct dirent **rhs);
+struct stat handle_link(char *path);
+void print_stat(const file_info_st *file_info);
+int put_colored_text(char *out_text, const char *in_text, char file_type, mode_t file_mode);
+char get_file_type(const char *path);
+void signal_handler(int signal, siginfo_t *signalInfo, void *userContext);
+void register_signal_handler(void);
+void update_alignments(const file_info_st *file_info);
 
 int main(int argc, const char *argv[]) {
     opts_et opts;
     struct dirent **name_list;
     int names, i;
-    file_info_st *data_files;
+    file_info_st *file_list;
 
-    registerSignalHandler();
+    register_signal_handler();
 
-    if(getOpts(argc, argv, &opts) == -1) {
+    if(get_opts(argc, argv, &opts) == -1) {
         PrintWarn("Cannot get opts");
         return -1;
     }
@@ -82,38 +84,40 @@ int main(int argc, const char *argv[]) {
     if(opts & NOT_THE_SAME_DIR) {
         chdir(argv[1]);
     }
-    getcwd(DirPath, PATH_MAX);
 
-    names = scandir(DirPath, &name_list, NULL, direntComparator);
+    current_year = localtime(&(time_t){time(NULL)})->tm_year;
+
+    getcwd(dir_path, PATH_MAX);
+    names = scandir(dir_path, &name_list, NULL, dirent_comparator);
     if(names == -1) {
-        PrintErr("Cannot scan the directory: %s", DirPath);
+        PrintErr("Cannot scan the directory: %s", dir_path);
         return -1;
     }
 
-    data_files = calloc(names, sizeof(*data_files));
+    file_list = calloc(names, sizeof(*file_list));
     for(i = 0; i < names; i++) {
         /* Заполняем инфу о файле */
-        strncpy(data_files[i].name, name_list[i]->d_name, PATH_MAX);
-        lstat(name_list[i]->d_name, &data_files[i].f_stat);
+        strncpy(file_list[i].name, name_list[i]->d_name, PATH_MAX);
+        lstat(file_list[i].name, &file_list[i].f_stat);
         /* Если это символьная ссылка, то получаем данные куда ссылка ведёт */
-        if(getFileType(data_files[i].name) == 'l') {
-            strncpy(data_files[i].link, data_files[i].name, PATH_MAX);
-            data_files[i].l_stat = handleLink(data_files[i].link);
+        if(get_file_type(file_list[i].name) == 'l') {
+            strncpy(file_list[i].link, file_list[i].name, PATH_MAX);
+            file_list[i].l_stat = handle_link(file_list[i].link);
         }
-        setAlignment(&data_files[i]);
+        update_alignments(&file_list[i]);
         free(name_list[i]);
     }
     free(name_list);
 
     for(i = 0; i < names; i++) {
-        printStat(&data_files[i]);
+        print_stat(&file_list[i]);
     }
 
-    free(data_files);
+    free(file_list);
     return 0;
 }
 
-opts_et getOpts(int argc, const char *argv[], opts_et *opts) {
+opts_et get_opts(int argc, const char *argv[], opts_et *opts) {
     int ret = 0;
     struct stat dir_stat;
 
@@ -131,7 +135,7 @@ opts_et getOpts(int argc, const char *argv[], opts_et *opts) {
     return ret;
 }
 
-int direntComparator(const struct dirent **lhs, const struct dirent **rhs) {
+int dirent_comparator(const struct dirent **lhs, const struct dirent **rhs) {
     int n = NAME_MAX;
     uint8_t *l = (void *)(**lhs).d_name;
     uint8_t *r = (void *)(**rhs).d_name;
@@ -150,7 +154,7 @@ int direntComparator(const struct dirent **lhs, const struct dirent **rhs) {
     return tolower(*l) - tolower(*r);
 }
 
-struct stat handleLink(char *path) {
+struct stat handle_link(char *path) {
     static int rec_count = 0;
     struct stat ret_stat = {0};
     char link[PATH_MAX] = {0};
@@ -161,12 +165,12 @@ struct stat handleLink(char *path) {
         exit(EXIT_FAILURE);
     }
 
-    if(getFileType(path) == 'l') {
+    if(get_file_type(path) == 'l') {
         readlink(path, link, PATH_MAX);
         sprintf(path, "%s", link);
         memset(link, 0, PATH_MAX);
         rec_count++;
-        handleLink(path);
+        handle_link(path);
     }
 
     lstat(path, &ret_stat);
@@ -174,14 +178,14 @@ struct stat handleLink(char *path) {
     return ret_stat;
 }
 
-void printStat(const file_info_st *file_info) {
+void print_stat(const file_info_st *file_info) {
     char file_type;
     char text[PATH_MAX];
     char *text_offset = text;
     struct tm *file_timestamp;
 
     /* печать типа файла */
-    file_type = getFileType(file_info->name);
+    file_type = get_file_type(file_info->name);
     text_offset += sprintf(text_offset, "%c", file_type);
     /* печать прав доступа пользователя */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRUSR) ? "r" : "-");
@@ -210,46 +214,43 @@ void printStat(const file_info_st *file_info) {
 
     text_offset += sprintf(text_offset, "%s", listxattr(file_info->name, NULL, 0) ? "+" : " ");
     /* печать числа символьных ссылок */
-    text_offset += sprintf(text_offset, "%*ld ", linkAlign, file_info->f_stat.st_nlink);
+    text_offset += sprintf(text_offset, "%*ld ", link_align, file_info->f_stat.st_nlink);
     /* печать пользователя и группы */
     text_offset += sprintf(text_offset,
                            "%-*s %-*s ",
-                           userAlign,
+                           user_align,
                            getpwuid(file_info->f_stat.st_uid)->pw_name,
-                           groupAlign,
+                           group_align,
                            getgrgid(file_info->f_stat.st_gid)->gr_name);
     /* печать размера файла или его номеров, если это устройство */
     text_offset += (file_type == 'l' || file_type == 'd' || file_type == '-')
-                     ? sprintf(text_offset,
-                               "%*ld ",
-                               sizeAlign > majorAlign + minorAlign + 2 ? sizeAlign : majorAlign + minorAlign + 2,
-                               file_info->f_stat.st_size)
+                     ? sprintf(text_offset, "%*ld ", size_align, file_info->f_stat.st_size)
                      : sprintf(text_offset,
                                "%*u, %*u ",
-                               majorAlign,
+                               major_align,
                                major(file_info->f_stat.st_rdev),
-                               minorAlign,
+                               minor_align,
                                minor(file_info->f_stat.st_rdev));
     /* печать времени последнего изменения */
     file_timestamp = localtime(&file_info->f_stat.st_mtim.tv_sec);
     IGNORE_WFORMAT_PUSH()
-    text_offset += (file_timestamp->tm_year == localtime(&(time_t){time(NULL)})->tm_year)
+    text_offset += (file_timestamp->tm_year == current_year)
                      ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", file_timestamp)
                      : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", file_timestamp);
     IGNORE_WFORMAT_POP()
     /* печать имени файла */
-    text_offset += putColoredText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
+    text_offset += put_colored_text(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if(file_type == 'l') {
-        text_offset += putColoredText(text_offset,
-                                      file_info->link,
-                                      getFileType(file_info->link),
-                                      file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
+        text_offset += put_colored_text(text_offset,
+                                        file_info->link,
+                                        get_file_type(file_info->link),
+                                        file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
     }
 
     fputs(text, stdout);
 }
 
-int putColoredText(char *out_text, const char *in_text, char file_type, mode_t file_mode) {
+int put_colored_text(char *out_text, const char *in_text, char file_type, mode_t file_mode) {
     int offset = 0;
 
     switch(file_type) {
@@ -293,7 +294,7 @@ int putColoredText(char *out_text, const char *in_text, char file_type, mode_t f
     return offset;
 }
 
-char getFileType(const char *path) {
+char get_file_type(const char *path) {
     char file_type;
     struct stat f_stat;
 
@@ -328,7 +329,7 @@ char getFileType(const char *path) {
     return file_type;
 }
 
-void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
+void signal_handler(int signal, siginfo_t *signalInfo, void *userContext) {
     (void)userContext;
 
     if(signal & SIGSEGV) {
@@ -371,40 +372,42 @@ void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
     exit(EXIT_FAILURE);
 }
 
-void registerSignalHandler(void) {
+void register_signal_handler(void) {
     struct sigaction signalAction;
 
     memset(&signalAction, 0, sizeof(signalAction));
     sigaddset(&signalAction.sa_mask, SIGSEGV);
-    signalAction.sa_sigaction = signalHandler;
+    signalAction.sa_sigaction = signal_handler;
     signalAction.sa_flags = SA_SIGINFO;
 
     sigaction(SIGSEGV, &signalAction, NULL);
 }
 
-void setAlignment(const file_info_st *file_info) {
+void update_alignments(const file_info_st *file_info) {
     char buff[NAME_MAX];
     int tmp;
 
     sprintf(buff, "%ld ", file_info->f_stat.st_nlink);
     tmp = strlen(buff);
-    linkAlign = max(linkAlign, tmp);
+    link_align = max(link_align, tmp);
 
     tmp = strlen(getpwuid(file_info->f_stat.st_uid)->pw_name);
-    userAlign = max(userAlign, tmp);
+    user_align = max(user_align, tmp);
 
     tmp = strlen(getgrgid(file_info->f_stat.st_gid)->gr_name);
-    groupAlign = max(groupAlign, tmp);
+    group_align = max(group_align, tmp);
 
     sprintf(buff, "%ld", file_info->f_stat.st_size);
     tmp = strlen(buff);
-    sizeAlign = max(sizeAlign, tmp);
+    size_align = max(size_align, tmp);
 
     sprintf(buff, "%d", major(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
-    majorAlign = max(majorAlign, tmp);
+    major_align = max(major_align, tmp);
 
     sprintf(buff, "%d", minor(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
-    minorAlign = max(minorAlign, tmp);
+    minor_align = max(minor_align, tmp);
+
+    size_align = max(size_align, major_align + minor_align + 2);
 }

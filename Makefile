@@ -7,7 +7,7 @@ BUILDDIR = build
 INCDIRS = src/utils $(BUILDDIR)
 PROJECT = ll
 SRCDIR = src
-VERSION = 1.1.1
+VERSION = 1.1.2
 
 WARN_FLAGS = -Wall -Wextra -pedantic
 ifeq ($(CC),clang)
