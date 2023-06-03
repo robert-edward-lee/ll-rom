@@ -17,6 +17,7 @@
 #include "bash_format.h"
 #include "service_printing.h"
 #include "version.h"
+#include "common.h"
 
 #define MAX_REC_COUNT 40
 
@@ -80,11 +81,7 @@ int main(int argc, const char *argv[]) {
     }
     getcwd(DirPath, PATH_MAX);
 
-    names = scandir(DirPath, &name_list, NULL,
-#ifdef ARM
-        (int(*)(const void*, const void*))
-#endif
-        sortDirent);
+    names = scandir(DirPath, &name_list, NULL, sortDirent);
     if(names == -1) {
         PrintErr("Cannot scan the directory: %s", DirPath);
         goto ret_err;
@@ -168,7 +165,7 @@ int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2) {
 
 struct stat handleLink(char *path) {
     static int rec_count = 0;
-    struct stat ret_stat;
+    struct stat ret_stat = {0};
     char link[PATH_MAX] = {0};
 
     DbgPrint("%s -> ", path);
@@ -179,7 +176,7 @@ struct stat handleLink(char *path) {
 
     if(getFileType(path) == 'l') {
         readlink(path, link, PATH_MAX);
-        sprintf(path, link);
+        sprintf(path, "%s", link);
         memset(link, 0, PATH_MAX);
         rec_count++;
         handleLink(path);
@@ -238,13 +235,7 @@ void printStat(const file_info_st *file_info) {
 
     text_offset += sprintf(text_offset, "%s", listxattr(file_info->name, NULL, 0) ? "+" : " ");
     /* печать числа символьных ссылок */
-    text_offset += sprintf(text_offset,
-#ifdef ARM
-        "%*d ",
-#else
-        "%*ld ",
-#endif
-        linkAlign, file_info->f_stat.st_nlink);
+    text_offset += sprintf(text_offset, "%*ld ", linkAlign, file_info->f_stat.st_nlink);
     /* печать пользователя и группы */
     text_offset += sprintf(text_offset, "%-*s %-*s ", userAlign,  getpwuid(file_info->f_stat.st_uid)->pw_name,
                                                       groupAlign, getgrgid(file_info->f_stat.st_gid)->gr_name);
@@ -257,9 +248,11 @@ void printStat(const file_info_st *file_info) {
                             minor(file_info->f_stat.st_rdev));
     /* печать времени последнего изменения */
     local_time = *localtime(&(file_info->f_stat.st_mtim.tv_sec));
+IGNORE_WFORMAT_PUSH()
     text_offset += (local_time.tm_year == global_time.tm_year)
                 ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", &local_time)
                 : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", &local_time);
+IGNORE_WFORMAT_POP()
     /* печать имени файла */
     text_offset += putGayText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if(file_type == 'l') {
@@ -268,7 +261,7 @@ void printStat(const file_info_st *file_info) {
                                     (file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
     }
 
-    fprintf(stdout, text);
+    fputs(text, stdout);
 }
 
 int putGayText(char *out_text, const char *in_text, char file_type, __mode_t file_mode) {
@@ -351,6 +344,8 @@ char getFileType(const char *path) {
 }
 
 void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
+    (void)userContext;
+
     if(signal == SIGSEGV) {
         switch(signalInfo->si_code) {
             case SEGV_MAPERR:
@@ -359,7 +354,6 @@ void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
             case SEGV_ACCERR:
                 PrintWarn("Invalid permissions for mapped object(%s)", QUOTE(SEGV_ACCERR));
                 break;
-#ifndef ARM
             case SEGV_BNDERR:
                 PrintWarn("Bounds checking failure(%s)", QUOTE(SEGV_BNDERR));
                 break;
@@ -375,7 +369,6 @@ void signalHandler(int signal, siginfo_t *signalInfo, void *userContext) {
             case SEGV_ADIPERR:
                 PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
                 break;
-#endif
             default:
                 PrintWarn("Unknown error");
                 break;
@@ -400,13 +393,7 @@ void setAlignment(const file_info_st *file_info) {
     char buff[NAME_MAX];
     int tmp;
 
-    sprintf(buff,
-#ifdef ARM
-        "%d ",
-#else
-        "%ld ",
-#endif
-        file_info->f_stat.st_nlink);
+    sprintf(buff, "%ld ", file_info->f_stat.st_nlink);
     tmp = strlen(buff);
     linkAlign = linkAlign < tmp ? tmp : linkAlign;
 
