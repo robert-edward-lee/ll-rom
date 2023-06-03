@@ -1,13 +1,13 @@
-CC ?= gcc
-CFLAGS =
+PROJECT = ll
+VERSION = 1.1.2
+CC = gcc
+CFLAGS = -c
 LFLAGS =
 DEBUG = 0
 DEFINES = _GNU_SOURCE
 BUILDDIR = build
-INCDIRS = src/utils $(BUILDDIR)
-PROJECT = ll
-SRCDIR = src
-VERSION = 1.1.2
+SRCDIRS = src $(wildcard src/*/)
+INCDIRS = $(SRCDIRS) $(BUILDDIR)
 
 WARN_FLAGS = -Wall -Wextra -pedantic
 ifeq ($(CC),clang)
@@ -20,27 +20,35 @@ DEFINES += DEBUG
 else
 OPT_FLAGS = -O2
 endif
-# _GNU_SOURCE
+
+DEPEND_FLAGS = -MMD -MP
+
 CFLAGS += --std=gnu99
 CFLAGS += $(OPT_FLAGS)
 CFLAGS += $(WARN_FLAGS)
+CFLAGS += $(DEPEND_FLAGS)
 CFLAGS += $(addprefix -I, $(INCDIRS))
 CFLAGS += $(addprefix -D, $(DEFINES))
 
-all: bin asm
-	@echo 'All targets is done...'
+VPATH = $(subst $() $(),:,$(sort $(INCDIRS) $(SRCDIRS) $(BUILDDIR)))
+SOURCES = $(foreach dir,$(SRCDIRS),$(wildcard $(dir)/*.c))
+OBJECTS = $(addprefix $(BUILDDIR)/, $(notdir $(patsubst %.c,%.o,$(SOURCES))))
+DEPENDS = $(patsubst %.o,%.d,$(OBJECTS))
+-include $(DEPENDS)
 
-bin: $(BUILDDIR) version
-	@echo 'Creating bin...DEBUG=$(DEBUG)'
-	$(CC) $(CFLAGS) $(SRCDIR)/$(PROJECT).c -o $(BUILDDIR)/$(PROJECT) $(LFLAGS)
+.DEFAULT_GOAL := $(PROJECT)
 
-asm: $(BUILDDIR) version
-	@echo 'Creating asm...'
-	@$(CC) -S $(CFLAGS) $(SRCDIR)/$(PROJECT).c -o $(BUILDDIR)/$(PROJECT).s $(LFLAGS)
+$(PROJECT): $(BUILDDIR) version $(OBJECTS)
+	@$(CC) $(OBJECTS) -o $(BUILDDIR)/$@ $(LFLAGS)
+	@echo '  LD      ' $(BUILDDIR)/$@
+
+$(BUILDDIR)/%.o: %.c
+	@$(CC) $(CFLAGS) $< -o $@
+	@echo '  CC      ' $@
 
 $(BUILDDIR):
 	@echo 'Creating dir $(BUILDDIR)...'
-	@mkdir $@
+	@mkdir -p $@
 
 version:
 	@echo 'Creating version...'
@@ -52,4 +60,4 @@ clean:
 format:
 	@clang-format \
 		-style=file:$(CURDIR)/.clang-format \
-		-i $(wildcard $(CURDIR)/src/*.c) -i $(wildcard $(CURDIR)/src/*/*.h)
+		-i $(wildcard $(CURDIR)/src/*.c) $(wildcard $(CURDIR)/src/*/*.h)
