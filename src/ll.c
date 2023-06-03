@@ -1,24 +1,31 @@
 #include <ctype.h>
-#include <dirent.h>
-#include <grp.h>
-#include <linux/limits.h>
-#include <linux/version.h>
-#include <pwd.h>
-#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
-#include <sys/xattr.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "bash_format.h"
 #include "common.h"
+#include "readlink.h"
+#include "scandir.h"
 #include "service_printing.h"
+#include "signal_handling.h"
 #include "version.h"
+
+#ifndef _WIN32
+#include <grp.h>
+#include <linux/limits.h>
+#include <linux/version.h>
+#include <pwd.h>
+#include <sys/sysmacros.h>
+#include <sys/xattr.h>
+#else
+#define lstat stat
+#define NAME_MAX FILENAME_MAX
+#endif
 
 #define MAX_REC_COUNT 40
 #define max(a, b) ((a) < (b) ? (b) : (a))
@@ -61,8 +68,6 @@ struct stat handle_link(char *path);
 void print_stat(const file_info_st *file_info);
 int put_colored_text(char *out_text, const char *in_text, char file_type, mode_t file_mode);
 char get_file_type(const char *path);
-void signal_handler(int signal, siginfo_t *signalInfo, void *userContext);
-void register_signal_handler(void);
 void update_alignments(const file_info_st *file_info);
 
 int main(int argc, const char *argv[]) {
@@ -191,48 +196,92 @@ void print_stat(const file_info_st *file_info) {
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRUSR) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWUSR) ? "w" : "-");
     if(file_info->f_stat.st_mode & S_IXUSR) {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISUID) ? "s" : "x");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISUID) ? "s" :
+#endif
+                                                                     "x");
     } else {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISUID) ? "S" : "-");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISUID) ? "S" :
+#endif
+                                                                     "-");
     }
     /* печать прав доступа группы */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IRGRP) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWGRP) ? "w" : "-");
     if(file_info->f_stat.st_mode & S_IXGRP) {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISGID) ? "s" : "x");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISGID) ? "s" :
+#endif
+                                                                     "x");
     } else {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISGID) ? "S" : "-");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISGID) ? "S" :
+#endif
+                                                                     "-");
     }
     /* печать прав доступа для остальных */
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IROTH) ? "r" : "-");
     text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_IWOTH) ? "w" : "-");
     if(file_info->f_stat.st_mode & S_IXOTH) {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISVTX) ? "t" : "x");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISVTX) ? "t" :
+#endif
+                                                                     "x");
     } else {
-        text_offset += sprintf(text_offset, "%s", (file_info->f_stat.st_mode & S_ISVTX) ? "T" : "-");
+        text_offset += sprintf(text_offset,
+                               "%s",
+#ifndef _WIN32
+                               (file_info->f_stat.st_mode & S_ISVTX) ? "T" :
+#endif
+                                                                     "-");
     }
-
+#ifndef _WIN32
     text_offset += sprintf(text_offset, "%s", listxattr(file_info->name, NULL, 0) ? "+" : " ");
+#endif
     /* печать числа символьных ссылок */
     text_offset += sprintf(text_offset, "%*ld ", link_align, file_info->f_stat.st_nlink);
     /* печать пользователя и группы */
+#ifndef _WIN32
     text_offset += sprintf(text_offset,
                            "%-*s %-*s ",
                            user_align,
                            getpwuid(file_info->f_stat.st_uid)->pw_name,
                            group_align,
                            getgrgid(file_info->f_stat.st_gid)->gr_name);
-    /* печать размера файла или его номеров, если это устройство */
-    text_offset += (file_type == 'l' || file_type == 'd' || file_type == '-')
-                     ? sprintf(text_offset, "%*ld ", size_align, file_info->f_stat.st_size)
-                     : sprintf(text_offset,
+#endif
+/* печать размера файла или его номеров, если это устройство */
+#ifndef _WIN32
+    if(file_type == 'l' || file_type == 'd' || file_type == '-') {
+#endif
+        text_offset += sprintf(text_offset, "%*ld ", size_align, file_info->f_stat.st_size);
+#ifndef _WIN32
+    } else {
+        text_offset += sprintf(text_offset,
                                "%*u, %*u ",
                                major_align,
                                major(file_info->f_stat.st_rdev),
                                minor_align,
                                minor(file_info->f_stat.st_rdev));
+    }
+#endif
     /* печать времени последнего изменения */
+#ifdef _WIN32
+    file_timestamp = localtime(&file_info->f_stat.st_mtime);
+#else
     file_timestamp = localtime(&file_info->f_stat.st_mtim.tv_sec);
+#endif
+
     IGNORE_WFORMAT_PUSH()
     text_offset += (file_timestamp->tm_year == current_year)
                      ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", file_timestamp)
@@ -259,10 +308,16 @@ int put_colored_text(char *out_text, const char *in_text, char file_type, mode_t
             offset = sprintf(out_text, BASH_LYELLOW BASH_BGBLACK "%s" BASH_DEFAULT "\n", in_text);
             break;
         case 'd':
-            if((file_mode & S_ISVTX) && (file_mode & S_IWOTH)) {
+            if(
+#ifndef _WIN32
+                (file_mode & S_ISVTX) &&
+#endif
+                (file_mode & S_IWOTH)) {
                 offset = sprintf(out_text, BASH_BLACK BASH_BGGREEN "%s" BASH_DEFAULT "/\n", in_text);
+#ifndef _WIN32
             } else if(file_mode & S_ISVTX) {
                 offset = sprintf(out_text, BASH_WHITE BASH_BGBLUE "%s" BASH_DEFAULT "/\n", in_text);
+#endif
             } else {
                 offset = sprintf(out_text, BASH_LBLUE "%s" BASH_DEFAULT "/\n", in_text);
             }
@@ -277,11 +332,14 @@ int put_colored_text(char *out_text, const char *in_text, char file_type, mode_t
             offset = sprintf(out_text, BASH_MAGENTA "%s" BASH_DEFAULT "=\n", in_text);
             break;
         case '-':
+#ifndef _WIN32
             if(file_mode & S_ISUID) {
                 offset = sprintf(out_text, BASH_WHITE BASH_BGRED "%s" BASH_DEFAULT, in_text);
             } else if(file_mode & S_ISGID) {
                 offset = sprintf(out_text, BASH_BLACK BASH_BGGRAY "%s" BASH_DEFAULT, in_text);
-            } else if(file_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) {
+            } else
+#endif
+                if(file_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) {
                 offset = sprintf(out_text, BASH_LGREEN "%s" BASH_DEFAULT, in_text);
             } else {
                 offset = sprintf(out_text, "%s", in_text);
@@ -300,9 +358,14 @@ char get_file_type(const char *path) {
 
     lstat(path, &f_stat);
     switch(f_stat.st_mode & S_IFMT) {
+#ifndef _WIN32
         case S_IFLNK:
             file_type = 'l';
             break;
+        case S_IFSOCK:
+            file_type = 's';
+            break;
+#endif
         case S_IFCHR:
             file_type = 'c';
             break;
@@ -315,9 +378,6 @@ char get_file_type(const char *path) {
         case S_IFIFO:
             file_type = 'p';
             break;
-        case S_IFSOCK:
-            file_type = 's';
-            break;
         case S_IFREG:
             file_type = '-';
             break;
@@ -329,60 +389,6 @@ char get_file_type(const char *path) {
     return file_type;
 }
 
-void signal_handler(int signal, siginfo_t *signalInfo, void *userContext) {
-    (void)userContext;
-
-    if(signal & SIGSEGV) {
-        switch(signalInfo->si_code) {
-            case SEGV_MAPERR:
-                PrintWarn("Address not mapped to object(%s)", QUOTE(SEGV_MAPERR));
-                break;
-            case SEGV_ACCERR:
-                PrintWarn("Invalid permissions for mapped object(%s)", QUOTE(SEGV_ACCERR));
-                break;
-            case SEGV_BNDERR:
-                PrintWarn("Bounds checking failure(%s)", QUOTE(SEGV_BNDERR));
-                break;
-            case SEGV_PKUERR:
-                PrintWarn("Protection key checking failure(%s)", QUOTE(SEGV_PKUERR));
-                break;
-            case SEGV_ACCADI:
-                PrintWarn("ADI not enabled for mapped object(%s)", QUOTE(SEGV_ACCADI));
-                break;
-            case SEGV_ADIDERR:
-                PrintWarn("Disrupting MCD error(%s)", QUOTE(SEGV_ADIDERR));
-                break;
-            case SEGV_ADIPERR:
-                PrintWarn("Precise MCD exception(%s)", QUOTE(SEGV_ADIPERR));
-                break;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-            case SEGV_MTEAERR:
-                PrintWarn("Async MTE fault(%s)", QUOTE(SEGV_MTEAERR));
-                break;
-            case SEGV_MTESERR:
-                PrintWarn("Sync MTE tag check fault(%s)", QUOTE(SEGV_MTESERR));
-                break;
-#endif
-            default:
-                PrintWarn("Unknown error code: (%d)", signalInfo->si_code);
-                break;
-        }
-        PrintWarn("Address of faulting memory reference: %p", signalInfo->si_addr);
-    }
-    exit(EXIT_FAILURE);
-}
-
-void register_signal_handler(void) {
-    struct sigaction signalAction;
-
-    memset(&signalAction, 0, sizeof(signalAction));
-    sigaddset(&signalAction.sa_mask, SIGSEGV);
-    signalAction.sa_sigaction = signal_handler;
-    signalAction.sa_flags = SA_SIGINFO;
-
-    sigaction(SIGSEGV, &signalAction, NULL);
-}
-
 void update_alignments(const file_info_st *file_info) {
     char buff[NAME_MAX];
     int tmp;
@@ -390,17 +396,17 @@ void update_alignments(const file_info_st *file_info) {
     sprintf(buff, "%ld ", file_info->f_stat.st_nlink);
     tmp = strlen(buff);
     link_align = max(link_align, tmp);
-
+#ifndef _WIN32
     tmp = strlen(getpwuid(file_info->f_stat.st_uid)->pw_name);
     user_align = max(user_align, tmp);
 
     tmp = strlen(getgrgid(file_info->f_stat.st_gid)->gr_name);
     group_align = max(group_align, tmp);
-
+#endif
     sprintf(buff, "%ld", file_info->f_stat.st_size);
     tmp = strlen(buff);
     size_align = max(size_align, tmp);
-
+#ifndef _WIN32
     sprintf(buff, "%d", major(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
     major_align = max(major_align, tmp);
@@ -408,6 +414,6 @@ void update_alignments(const file_info_st *file_info) {
     sprintf(buff, "%d", minor(file_info->f_stat.st_rdev));
     tmp = strlen(buff);
     minor_align = max(minor_align, tmp);
-
+#endif
     size_align = max(size_align, major_align + minor_align + 2);
 }

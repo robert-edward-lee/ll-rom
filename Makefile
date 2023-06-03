@@ -1,5 +1,5 @@
 PROJECT = ll
-VERSION = 1.1.2
+VERSION = 1.1.3
 CC = gcc
 CFLAGS = -c
 LFLAGS =
@@ -60,4 +60,4 @@ clean:
 format:
 	@clang-format \
 		-style=file:$(CURDIR)/.clang-format \
-		-i $(wildcard $(CURDIR)/src/*.c) $(wildcard $(CURDIR)/src/*/*.h)
+		-i $(SOURCES) $(foreach dir,$(INCDIRS),$(wildcard $(dir)/*.h))
