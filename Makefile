@@ -48,3 +48,8 @@ version:
 
 clean:
 	@rm -rf $(BUILDDIR)/*
+
+format:
+	clang-format \
+		-style=file:$(CURDIR)/.clang-format \
+		-i $(wildcard $(CURDIR)/src/*.c) -i $(wildcard $(CURDIR)/src/*/*.h)

@@ -5,7 +5,7 @@
 #ifndef __BASH_FORMAT_H
 #define __BASH_FORMAT_H
 
-/* форматирование */
+// clang-format off
 #define BASH_DEFAULT                        "\033[0m"               /* отмена всех опций */
 #define BASH_BOLD                           "\033[1m"               /* жирный шрифт */
 #define BASH_DBOLD                          "\033[2m"               /* полу-яркий цвет */

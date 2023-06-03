@@ -15,17 +15,16 @@
 #include <unistd.h>
 
 #include "bash_format.h"
+#include "common.h"
 #include "service_printing.h"
 #include "version.h"
-#include "common.h"
 
 #define MAX_REC_COUNT 40
 
 typedef enum {
     NOT_THE_SAME_DIR = 1 << 1,
-    DESCRIPTION = ~NOT_THE_SAME_DIR
-}
-opts_et;
+    DESCRIPTION = ~NOT_THE_SAME_DIR,
+} opts_et;
 
 typedef struct {
     /* Имя файла */
@@ -36,9 +35,7 @@ typedef struct {
     struct stat f_stat;
     /* Данные куда ссылается ссылка, если файл это ссылка */
     struct stat l_stat;
-}
-file_info_st;
-
+} file_info_st;
 
 char DirPath[PATH_MAX] = ".";
 
@@ -51,22 +48,20 @@ int sizeAlign = 0;
 int majorAlign = 0;
 int minorAlign = 0;
 
-
 opts_et getOpts(int argc, const char *argv[], opts_et *opts);
 void tolowerWord(char *word);
 int sortDirent(const struct dirent **dirent1, const struct dirent **dirent2);
 struct stat handleLink(char *path);
 void printStat(const file_info_st *file_info);
-int putGayText(char *out_text, const char *in_text, char file_type, __mode_t file_mode);
+int putColoredText(char *out_text, const char *in_text, char file_type, mode_t file_mode);
 char getFileType(const char *path);
 void signalHandler(int signal, siginfo_t *signalInfo, void *userContext);
 void signalCatcher(void);
 void setAlignment(const file_info_st *file_info);
 
-
 int main(int argc, const char *argv[]) {
     opts_et opts;
-    struct dirent** name_list;
+    struct dirent **name_list;
     int names, i;
     file_info_st *data_files;
 
@@ -86,7 +81,7 @@ int main(int argc, const char *argv[]) {
         PrintErr("Cannot scan the directory: %s", DirPath);
         goto ret_err;
     } else {
-        data_files = (file_info_st*)calloc(names, sizeof(file_info_st));
+        data_files = (file_info_st *)calloc(names, sizeof(file_info_st));
         for(i = 0; i < names; i++) {
             /* Заполняем инфу о файле */
             strncpy(data_files[i].name, name_list[i]->d_name, PATH_MAX);
@@ -237,34 +232,45 @@ void printStat(const file_info_st *file_info) {
     /* печать числа символьных ссылок */
     text_offset += sprintf(text_offset, "%*ld ", linkAlign, file_info->f_stat.st_nlink);
     /* печать пользователя и группы */
-    text_offset += sprintf(text_offset, "%-*s %-*s ", userAlign,  getpwuid(file_info->f_stat.st_uid)->pw_name,
-                                                      groupAlign, getgrgid(file_info->f_stat.st_gid)->gr_name);
+    text_offset += sprintf(text_offset,
+                           "%-*s %-*s ",
+                           userAlign,
+                           getpwuid(file_info->f_stat.st_uid)->pw_name,
+                           groupAlign,
+                           getgrgid(file_info->f_stat.st_gid)->gr_name);
     /* печать размера файла или его номеров, если это устройство */
     text_offset += (file_type == 'l' || file_type == 'd' || file_type == '-')
-                ? sprintf(text_offset, "%*ld ",
-                            sizeAlign > majorAlign + minorAlign + 2 ? sizeAlign : majorAlign + minorAlign + 2,
-                            file_info->f_stat.st_size)
-                : sprintf(text_offset, "%*u, %*u ", majorAlign, major(file_info->f_stat.st_rdev), minorAlign,
-                            minor(file_info->f_stat.st_rdev));
+                     ? sprintf(text_offset,
+                               "%*ld ",
+                               sizeAlign > majorAlign + minorAlign + 2 ? sizeAlign : majorAlign + minorAlign + 2,
+                               file_info->f_stat.st_size)
+                     : sprintf(text_offset,
+                               "%*u, %*u ",
+                               majorAlign,
+                               major(file_info->f_stat.st_rdev),
+                               minorAlign,
+                               minor(file_info->f_stat.st_rdev));
     /* печать времени последнего изменения */
     local_time = *localtime(&(file_info->f_stat.st_mtim.tv_sec));
-IGNORE_WFORMAT_PUSH()
+    IGNORE_WFORMAT_PUSH()
     text_offset += (local_time.tm_year == global_time.tm_year)
-                ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", &local_time)
-                : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", &local_time);
-IGNORE_WFORMAT_POP()
+                     ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", &local_time)
+                     : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", &local_time);
+    IGNORE_WFORMAT_POP()
     /* печать имени файла */
-    text_offset += putGayText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
+    text_offset += putColoredText(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if(file_type == 'l') {
         file_type = getFileType(file_info->link);
-        text_offset += putGayText(text_offset, file_info->link, file_type,
-                                    (file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
+        text_offset += putColoredText(text_offset,
+                                      file_info->link,
+                                      file_type,
+                                      (file_info->l_stat.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
     }
 
     fputs(text, stdout);
 }
 
-int putGayText(char *out_text, const char *in_text, char file_type, __mode_t file_mode) {
+int putColoredText(char *out_text, const char *in_text, char file_type, mode_t file_mode) {
     int offset = 0;
 
     switch(file_type) {
