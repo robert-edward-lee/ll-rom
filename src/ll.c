@@ -280,12 +280,9 @@ void print_stat(const file_info_st *file_info) {
 #else
     file_timestamp = localtime(&file_info->f_stat.st_mtim.tv_sec);
 #endif
-
-    IGNORE_WFORMAT_PUSH()
     text_offset += (file_timestamp->tm_year == current_year)
-                     ? strftime(text_offset, NAME_MAX, "%b %-2d %H:%M ", file_timestamp)
-                     : strftime(text_offset, NAME_MAX, "%b %-2d %-5Y ", file_timestamp);
-    IGNORE_WFORMAT_POP()
+                     ? strftime(text_offset, NAME_MAX, "%b %d %H:%M ", file_timestamp)
+                     : strftime(text_offset, NAME_MAX, "%b %d  %Y ", file_timestamp);
     /* печать имени файла */
     text_offset += put_colored_text(text_offset, file_info->name, file_type, file_info->f_stat.st_mode);
     if(file_type == 'l') {
